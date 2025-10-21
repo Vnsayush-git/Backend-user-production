@@ -63,62 +63,65 @@ exports.register = async (req, res) => {
     }
 }
 
+exports.login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    console.log('Login request body:', req.body);
 
-
-exports.login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        console.log(req.body);
-
-        if (!email || !password) {
-            return res.status(400).json("all field required")
-        }
-
-        const userExist = await User.findOne({ email });
-        if (!userExist) {
-            return res.status(400).json("invalid credentials")
-        }
-
-        const verifypassword = await bcrypt.compare(password, userExist.password);
-
-        if (!verifypassword) {
-            return res.status(400).json("invalid credentials")
-        }
-
-        const sessiondata = new Session({
-            userid: userExist._id, ip: req.clientIp, agent: req.header('user-agent')
-        });
-        await sessiondata.save();
-
-        const accesstoken = getaccesstoken(userExist, sessiondata);
-        const refreshtoken = getrefreshtoken(sessiondata);
-
-        console.log(accesstoken, "accesstoken");
-        console.log(refreshtoken, "refreshtoken");
-
-        res.cookie("accesstoken", accesstoken, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 60 * 60 * 1000
-        });
-
-        res.cookie("refreshtoken", refreshtoken, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 24 * 60 * 60 * 1000
-        });
-
-        res.status(200).json({ msg: "login done", user:userExist })
-
-
-
-    } catch (error) {
-        console.log(error);
-        res.status(500).json("server error")
+    if (!email || !password) {
+      const error = new Error('All fields are required');
+      error.status = 400;
+      return next(error);
     }
-}
+
+    const userExist = await User.findOne({ email });
+    if (!userExist) {
+      const error = new Error('Invalid credentials');
+      error.status = 400;
+      return next(error);
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, userExist.password);
+    if (!isPasswordValid) {
+      const error = new Error('Invalid credentials');
+      error.status = 400;
+      return next(error);
+    }
+
+    const sessiondata = new Session({
+      userid: userExist._id,
+      ip: req.clientIp,
+      agent: req.header('user-agent'),
+    });
+    await sessiondata.save();
+
+    const accesstoken = getaccesstoken(userExist, sessiondata);
+    const refreshtoken = getrefreshtoken(sessiondata);
+
+    console.log('Access Token:', accesstoken);
+    console.log('Refresh Token:', refreshtoken);
+
+    res.cookie('accesstoken', accesstoken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+
+    res.cookie('refreshtoken', refreshtoken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
+    res.status(200).json({ msg: 'Login successful', user: userExist });
+  } catch (err) {
+    console.error('Login error:', err);
+    next(err); // pass to centralized error handler
+  }
+};
+
 
 
 exports.logout = async (req, res) => {
